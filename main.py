@@ -1,9 +1,8 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
-import login  # O arquivo login.py que você já tem
+import login
 import frota
 import pneus
-# import database # Vamos usar isso nas páginas internas depois
 
 # 1. Configuração da Página
 st.set_page_config(
@@ -12,47 +11,39 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Carregar CSS (O mesmo style.css que você já tem)
+# 2. Carregar CSS
 try:
     with open('style.css') as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 except FileNotFoundError:
-    st.warning("Arquivo style.css não encontrado. O layout pode ficar diferente.")
+    st.warning("Arquivo style.css não encontrado.")
 
-# 3. Verificação de Login (Bloqueio de Segurança)
-# Se não estiver logado, mostra a tela de login e para tudo (st.stop)
+# 3. Verificação de Login
 if not st.session_state.get('logged_in'):
     login.render_login_page()
     st.stop()
 
 # --- DAQUI PRA BAIXO SÓ APARECE SE ESTIVER LOGADO ---
 
-# 4. Barra Lateral (Sidebar) com Info do Usuário
+# 4. Barra Lateral
 with st.sidebar:
     st.title("Tyre Control 🚚")
-    
-    # Mostra quem está logado
     usuario = st.session_state.get('user_name', 'Usuário')
     perfil = st.session_state.get('user_role', 'Visitante')
     st.write(f"Olá, **{usuario}**!")
     st.caption(f"Perfil: {perfil}")
-    
     st.divider()
-    
-    # Botão de Sair
     if st.button("Sair / Logout", type="primary"):
-        # Limpa a sessão para deslogar
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
 
-# 5. Menu Principal (Horizontal para ficar bonito)
-# Se der erro aqui, instale: pip install streamlit-option-menu
+# 5. Menu Principal
 selected = option_menu(
     menu_title=None,
     options=["Dashboard", "Minha Frota", "Gestão de Pneus", "Movimentações"],
-    icons=["speedometer2", "truck", "vinyl", "arrow-left-right"], # Ícones do Bootstrap
-    default_index=0,
+    icons=["speedometer2", "truck", "vinyl", "arrow-left-right"],
+    default_index=1, # Já começa na frota para agilizar
     orientation="horizontal",
     styles={
         "container": {"padding": "0!important", "background-color": "#fafafa"},
@@ -62,17 +53,15 @@ selected = option_menu(
     }
 )
 
-# 6. Roteamento (Atualizado)
+# 6. Roteamento
 if selected == "Dashboard":
     st.title("📊 Visão Geral")
     st.info("Aqui teremos os gráficos gerais da frota.")
 
 elif selected == "Minha Frota":
-    # Chama a função que criamos no arquivo frota.py
     frota.render_frota()
 
 elif selected == "Gestão de Pneus":
-    # Chama a função que criamos no arquivo pneus.py
     pneus.render_pneus()
 
 elif selected == "Movimentações":
