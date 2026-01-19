@@ -1,6 +1,8 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 import login  # O arquivo login.py que você já tem
+import frota
+import pneus
 # import database # Vamos usar isso nas páginas internas depois
 
 # 1. Configuração da Página
@@ -60,39 +62,19 @@ selected = option_menu(
     }
 )
 
-# 6. Roteamento (Decide o que mostrar na tela)
+# 6. Roteamento (Atualizado)
 if selected == "Dashboard":
-    st.title("📊 Visão Geral da Frota")
-    st.info("🚧 Em construção: Aqui teremos os KPIs de CPK e alertas de troca.")
-    
-    # Exemplo de como vai ficar no futuro:
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Caminhões Ativos", "12")
-    col2.metric("Pneus Rodando", "128")
-    col3.metric("Atenção Necessária", "4", delta="-1", delta_color="inverse")
+    st.title("📊 Visão Geral")
+    st.info("Aqui teremos os gráficos gerais da frota.")
 
 elif selected == "Minha Frota":
-    st.title("🚛 Gestão de Caminhões")
-    st.write("Aqui você vai cadastrar caminhões e ver o diagrama de eixos.")
-    
-    tab1, tab2 = st.tabs(["Lista de Veículos", "Cadastrar Novo"])
-    with tab1:
-        st.write("Tabela de caminhões virá aqui...")
-    with tab2:
-        st.text_input("Placa do Veículo")
-        st.button("Salvar Caminhão")
+    # Chama a função que criamos no arquivo frota.py
+    frota.render_frota()
 
 elif selected == "Gestão de Pneus":
-    st.title("🔘 Controle de Estoque de Pneus")
-    st.write("Aqui cadastramos os pneus novos e gerenciamos o estoque.")
-    st.warning("Lembre-se: O pneu nasce aqui antes de ir para o caminhão.")
+    # Chama a função que criamos no arquivo pneus.py
+    pneus.render_pneus()
 
 elif selected == "Movimentações":
-    st.title("🔧 Oficina e Movimentação")
-    st.write("A tela mágica: Montagem, Desmontagem e Rodízio.")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.button("Montar Pneu (Estoque -> Caminhão)", use_container_width=True)
-    with col2:
-        st.button("Realizar Rodízio", use_container_width=True)
+    st.title("🔧 Oficina")
+    st.write("Em breve: Aqui faremos a montagem dos pneus nos caminhões.")
