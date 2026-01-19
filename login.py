@@ -16,6 +16,7 @@ def check_login(username, password):
     user = None
     try:
         with conn.cursor() as cursor:
+            # Busca o usuário pelo username
             cursor.execute("SELECT id, nome, password_hash, role FROM usuarios WHERE username = %s", (username,))
             user = cursor.fetchone()
     except Exception as e:
@@ -24,15 +25,17 @@ def check_login(username, password):
         release_connection(conn)
 
     if user:
-        # Compara o hash da senha digitada com o hash salvo no banco
-        password_hash = user[2]
+        # CORREÇÃO AQUI: Acessamos pelo NOME da coluna, não pelo número [2]
+        password_hash = user['password_hash'] 
+        
         if hash_password(password) == password_hash:
-            # Salva informações do usuário na sessão
+            # Salva informações na sessão (também usando nomes)
             st.session_state['logged_in'] = True
-            st.session_state['user_id'] = user[0]
-            st.session_state['user_name'] = user[1]
-            st.session_state['user_role'] = user[3]
+            st.session_state['user_id'] = user['id']
+            st.session_state['user_name'] = user['nome']
+            st.session_state['user_role'] = user['role']
             return True
+            
     return False
 
 def render_login_page():
@@ -47,6 +50,6 @@ def render_login_page():
 
         if submitted:
             if check_login(username, password):
-                st.rerun() # Recarrega a página para mostrar o app principal
+                st.rerun() 
             else:
                 st.error("Usuário ou senha inválidos.")
