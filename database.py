@@ -1,5 +1,6 @@
 import streamlit as st
 import psycopg2
+import psycopg2.extras  # <--- ADICIONE ESTA LINHA AQUI
 from psycopg2 import pool
 
 # Configuração do Pool de Conexões
