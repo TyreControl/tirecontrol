@@ -3,63 +3,42 @@ import pandas as pd
 from database import run_query
 
 def get_status_visual(km_vida, ciclo):
-    """
-    Define a cor e o ícone do pneu baseado na regra de negócio (Pág 10 - Alertas).
-    Lógica: Pneus recapados têm vida útil menor estimada que novos.
-    """
-    limite_alerta = 60000 if ciclo > 0 else 80000
-    limite_critico = 70000 if ciclo > 0 else 100000
+    """Regra de Negócio Pág 10: Cores baseadas na vida útil e ciclo"""
+    limite = 70000 if ciclo > 0 else 100000 # Recapado dura menos
+    percentual = min(km_vida / limite, 1.0)
     
-    if km_vida >= limite_critico:
-        return "🔴", "Troca Urgente"
-    elif km_vida >= limite_alerta:
-        return "🟡", "Atenção"
-    else:
-        return "🟢", "OK"
+    if percentual > 0.9: return "🔴", "Crítico", "#ffcccc"
+    elif percentual > 0.7: return "🟡", "Atenção", "#fff4cc"
+    return "🟢", "OK", "#ccffcc"
 
 def render_frota():
-    st.title("🚛 Monitoramento da Frota")
+    st.title("🚛 Gestão Visual da Frota")
     
     user_id = st.session_state['user_id']
     dados_user = run_query("SELECT cliente_id FROM usuarios WHERE id = %s", (user_id,))
     if not dados_user: return
     cliente_id = dados_user[0]['cliente_id']
 
-    # --- MENU SUPERIOR: LISTA OU DETALHE ---
-    modo = st.radio("Modo de Visualização", ["Lista Geral", "Diagrama Visual do Caminhão"], horizontal=True)
+    # --- MENU DE SELEÇÃO ---
+    caminhoes = run_query("SELECT id, placa, modelo, config_eixos, km_atual FROM caminhoes WHERE cliente_id = %s ORDER BY placa", (cliente_id,))
+    if not caminhoes:
+        st.warning("Cadastre um veículo para começar.")
+        return
 
-    if modo == "Lista Geral":
-        # Visão Tabela (Pág 8 - Dashboard Cliente)
-        df = run_query("""
-            SELECT placa, modelo, config_eixos, km_atual 
-            FROM caminhoes WHERE cliente_id = %s ORDER BY placa
-        """, (cliente_id,))
-        
-        if df:
-            st.dataframe(pd.DataFrame(df), use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhum caminhão cadastrado.")
-            
-    else:
-        # --- DIAGRAMA VISUAL (Pág 7) ---
-        caminhoes = run_query("SELECT id, placa, modelo, config_eixos, km_atual FROM caminhoes WHERE cliente_id = %s ORDER BY placa", (cliente_id,))
-        if not caminhoes:
-            st.warning("Cadastre veículos primeiro.")
-            return
-            
-        opcoes = {c['placa']: c for c in caminhoes}
+    opcoes = {c['placa']: c for c in caminhoes}
+    
+    col_sel, col_detalhes = st.columns([1, 3])
+    with col_sel:
         placa_sel = st.selectbox("Selecione o Veículo", list(opcoes.keys()))
         cam = opcoes[placa_sel]
+        st.info(f"📍 {cam['modelo']} ({cam['config_eixos']})")
+        st.metric("Hodômetro", f"{cam['km_atual']:,} km")
 
-        st.divider()
-        col_header, col_kpi = st.columns([2, 1])
-        with col_header:
-            st.subheader(f"{cam['placa']} - {cam['modelo']}")
-            st.caption(f"Configuração: {cam['config_eixos']}")
-        with col_kpi:
-            st.metric("KM Atual (Hodômetro)", f"{cam['km_atual']:,} km")
-
-        # Busca Pneus
+    # --- VISUALIZAÇÃO DO CHASSI ---
+    with col_detalhes:
+        st.subheader(f"Mapa de Pneus: {placa_sel}")
+        
+        # Busca pneus montados neste caminhão exato
         pneus = run_query("""
             SELECT id, marca_fogo, marca, medida, posicao_atual, km_vida_total, ciclo_atual, status 
             FROM pneus WHERE caminhao_atual_id = %s
@@ -67,48 +46,75 @@ def render_frota():
         
         mapa = {p['posicao_atual']: p for p in pneus} if pneus else {}
 
-        # Função para renderizar o card do pneu (Conforme "Painel Lateral" Pág 7)
-        def render_pneu_card(pos, label):
-            pneu = mapa.get(pos)
-            with st.container(border=True):
-                st.markdown(f"**{label}**")
-                if pneu:
-                    icone, status_texto = get_status_visual(pneu['km_vida_total'], pneu['ciclo_atual'])
-                    st.markdown(f"🏷️ **{pneu['marca_fogo']}**")
-                    st.text(f"{pneu['marca']} \n{pneu['medida']}")
-                    st.markdown(f"{icone} {status_texto}")
-                    st.caption(f"Rodou: {pneu['km_vida_total']} km")
-                    
-                    if st.button("🔍 Detalhes", key=f"btn_{pos}"):
-                        st.session_state['pneu_detalhe_id'] = pneu['id']
-                        st.info(f"ID Interno: {pneu['id']}") 
-                        # Numa versão V2, isso abriria um modal, mas o Streamlit nativo não tem modal fácil.
-                else:
-                    st.markdown("🚫 *Vazio*")
-
-        # Layout do Caminhão (Eixos)
-        st.write("---")
-        st.markdown("#### ⬆️ Eixo Dianteiro")
-        c1, c2 = st.columns(2)
-        with c1: render_pneu_card('FL', 'Frente Esquerda')
-        with c2: render_pneu_card('FR', 'Frente Direita')
-
-        st.markdown("#### ⬇️ Eixo Traseiro / Tração")
-        c3, c4, c5, c6 = st.columns(4)
-        with c3: render_pneu_card('TL_OUT', 'Tração Esq. Fora')
-        with c4: render_pneu_card('TL_IN', 'Tração Esq. Dentro')
-        with c5: render_pneu_card('TR_IN', 'Tração Dir. Dentro')
-        with c6: render_pneu_card('TR_OUT', 'Tração Dir. Fora')
-
-    # Mantive o cadastro escondido num expander para limpar a tela
-    with st.expander("⚙️ Gerenciar Cadastro de Veículos"):
-        with st.form("add_truck"):
-            c1, c2 = st.columns(2)
-            placa = c1.text_input("Placa").upper()
-            modelo = c2.text_input("Modelo")
-            if st.form_submit_button("Salvar"):
-                try:
-                    run_query("INSERT INTO caminhoes (cliente_id, placa, modelo, km_atual) VALUES (%s, %s, %s, 0)", (cliente_id, placa, modelo))
-                    st.success("Salvo!")
+        # Função Helper para desenhar o CARD DO PNEU
+        def render_posicao(pos_code, label):
+            pneu = mapa.get(pos_code)
+            container = st.container(border=True)
+            
+            if pneu:
+                icone, status_txt, cor_bg = get_status_visual(pneu['km_vida_total'], pneu['ciclo_atual'])
+                container.markdown(f"<div style='background-color:{cor_bg}; padding: 2px; border-radius: 4px;'><b>{pos_code}</b></div>", unsafe_allow_html=True)
+                container.caption(label)
+                container.markdown(f"🔥 **{pneu['marca_fogo']}**")
+                container.text(f"{pneu['marca']} | {pneu['ciclo_atual']}ª Vida")
+                container.progress(min(pneu['km_vida_total']/100000, 1.0)) # Barra de vida
+            else:
+                container.markdown(f"**{pos_code}**")
+                container.caption(label)
+                container.warning("Vazio")
+                if container.button("➕ Mapear", key=f"map_{pos_code}"):
+                    st.session_state['mapear_dados'] = {'cam_id': cam['id'], 'pos': pos_code, 'cam_placa': cam['placa']}
                     st.rerun()
-                except: st.error("Erro ao salvar.")
+
+        # LAYOUT DE EIXOS (Renderização fiel à posição física)
+        # Eixo 1 (Direcional)
+        st.markdown("### ⬆️ Eixo Direcional")
+        c1, c_vazio, c2 = st.columns([1, 0.2, 1])
+        with c1: render_posicao('FL', 'Frente Esquerda')
+        with c2: render_posicao('FR', 'Frente Direita')
+
+        # Eixo 2 (Tração)
+        st.markdown("### ⬇️ Eixo Tração")
+        c3, c4, c_vazio, c5, c6 = st.columns([1, 1, 0.2, 1, 1])
+        with c3: render_posicao('TL_OUT', 'Esq. Fora')
+        with c4: render_posicao('TL_IN', 'Esq. Dentro')
+        with c5: render_posicao('TR_IN', 'Dir. Dentro')
+        with c6: render_posicao('TR_OUT', 'Dir. Fora')
+
+        # Eixo 3 (Truck - se houver)
+        if cam['config_eixos'] in ['6x2', '6x4']:
+            st.markdown("### ⬇️ Eixo Truck (3º Eixo)")
+            c7, c8, c_vazio, c9, c10 = st.columns([1, 1, 0.2, 1, 1])
+            with c7: render_posicao('RL_OUT', 'Esq. Fora')
+            with c8: render_posicao('RL_IN', 'Esq. Dentro')
+            with c9: render_posicao('RR_IN', 'Dir. Dentro')
+            with c10: render_posicao('RR_OUT', 'Dir. Fora')
+
+    # --- MODAL DE MAPEAMENTO (Inventário Inicial) ---
+    if 'mapear_dados' in st.session_state:
+        dados = st.session_state['mapear_dados']
+        st.write("---")
+        with st.form("form_mapear_rapido"):
+            st.markdown(f"#### 📍 Mapeando {dados['pos']} no {dados['cam_placa']}")
+            st.info("Use para cadastrar pneus que JÁ estão fisicamente no caminhão.")
+            
+            col_a, col_b = st.columns(2)
+            mf = col_a.text_input("Marca de Fogo (DOT)").upper()
+            marca = col_b.selectbox("Marca", ["Michelin", "Bridgestone", "Goodyear", "Pirelli", "Outra"])
+            
+            col_c, col_d = st.columns(2)
+            vida = col_c.selectbox("Ciclo Atual", ["Novo (0)", "Recap 1", "Recap 2"])
+            km_est = col_d.number_input("KM Estimado Já Rodado", min_value=0)
+            
+            if st.form_submit_button("Confirmar Posição"):
+                ciclo_map = {"Novo (0)": 0, "Recap 1": 1, "Recap 2": 2}
+                try:
+                    run_query("""
+                        INSERT INTO pneus (cliente_id, marca_fogo, marca, status, caminhao_atual_id, posicao_atual, ciclo_atual, km_vida_total)
+                        VALUES (%s, %s, %s, 'MONTADO', %s, %s, %s, %s)
+                    """, (cliente_id, mf, marca, dados['cam_id'], dados['pos'], ciclo_map[vida], km_est))
+                    st.success("Mapeado!")
+                    del st.session_state['mapear_dados']
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro: {e} (Verifique se o Fogo já existe)")
