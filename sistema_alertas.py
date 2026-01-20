@@ -114,6 +114,9 @@ def verificar_alertas_automaticos(cliente_id):
                     acao='Agendar rodízio urgente',
                     usuario_id='SISTEMA'
                 )
+    except Exception as e:
+        print(f"Erro na verificação automática: {e}") 
+        # Ou use st.error se quiser mostrar na tela, mas print é mais seguro para jobs de fundo
 
 def render_sistema_alertas():
     """Interface Streamlit para visualizar alertas"""
