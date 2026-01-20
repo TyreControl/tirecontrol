@@ -1,85 +1,24 @@
+"""
+FLUXO 5 - fluxo_rodizio_v2.py
+Implementa: Sugestão + Execução de Rodízio completo
+"""
+
 import streamlit as st
-from database import run_query
 import pandas as pd
-import qrcode
-import io
 from datetime import datetime
+from database_v2 import (
+    sugerir_rodizio_automatico,
+    executar_rodizio,
+    obter_historico_rodizio_veiculo,
+    run_query
+)
 
-def sugerir_rodizio(veiculo_id):
-    """Sugere melhor rodízio baseado em desgaste"""
-    
-    # Passo 1: Get pneus do veículo
-    pneus_ativos = run_query("""
-        SELECT id, marca_fogo, km_vida_total, posicao_atual, ciclo_atual
-        FROM pneus 
-        WHERE caminhao_atual_id = %s AND status = 'MONTADO'
-    """, (veiculo_id,))
-    
-    pneus_repouso = run_query("""
-        SELECT id, marca_fogo, km_vida_total, ciclo_atual
-        FROM pneus 
-        WHERE status = 'ESTOQUE'
-    """)
-    
-    if not pneus_ativos or not pneus_repouso:
-        return []
-    
-    # Passo 2: Calcular desgaste score cada pneu
-    def calc_score(pneu):
-        limite = 70000 if pneu['ciclo_atual'] > 0 else 100000
-        return (pneu['km_vida_total'] / limite) * 100
-    
-    for p in pneus_ativos:
-        p['desgaste_score'] = calc_score(p)
-    
-    # Passo 3: Encontrar troca ideal
-    sugestoes = []
-    pneus_ativos_sorted = sorted(pneus_ativos, key=lambda x: x['desgaste_score'], reverse=True)
-    
-    for pneu_ativo in pneus_ativos_sorted[:2]:  # Top 2 pneus mais desgastados
-        for pneu_repouso in pneus_repouso:
-            score_repouso = calc_score(pneu_repouso)
-            if score_repouso < pneu_ativo['desgaste_score']:
-                economia = pneu_ativo['desgaste_score'] - score_repouso
-                sugestoes.append({
-                    'trocar_de': pneu_ativo,
-                    'trocar_para': pneu_repouso,
-                    'economia_percentual': economia
-                })
-                break
-    
-    return sugestoes
-
-
-def gerar_qr_rodizio(rodizio_id):
-    """Gera QR code para operador confirmar rodízio no campo"""
-    
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4
-    )
-    qr.add_data(f"RODIZIO_{rodizio_id}")
-    qr.make(fit=True)
-    
-    img = qr.make_image(fill_color="black", back_color="white")
-    
-    buf = io.BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    
-    return buf
-
-
-def executar_rodizio_app():
-    """Interface Streamlit para rodízio"""
-    
-    st.set_page_config(page_title="Rodízio Pneus", layout="wide")
+def render_rodizio_v2():
+    """Interface para sugerir e executar rodízio"""
     
     st.title("🔄 Gerenciador de Rodízio de Pneus")
     
-    user_id = st.session_state.get('user_id')
+    user_id = st.session_state['user_id']
     dados_user = run_query("SELECT cliente_id FROM usuarios WHERE id = %s", (user_id,))
     
     if not dados_user:
@@ -88,99 +27,159 @@ def executar_rodizio_app():
     
     cliente_id = dados_user[0]['cliente_id']
     
-    # Seleção veículo
-    veiculos = run_query("""
-        SELECT id, placa 
-        FROM caminhoes 
-        WHERE cliente_id = %s
-        ORDER BY placa
-    """, (cliente_id,))
+    # ==================== SELEÇÃO DE VEÍCULO ====================
+    query_cam = """
+    SELECT id, placa, modelo, km_atual, config_eixos 
+    FROM caminhoes 
+    WHERE cliente_id = %s 
+    ORDER BY placa
+    """
+    caminhoes = run_query(query_cam, (cliente_id,))
     
-    if not veiculos:
-        st.warning("Nenhum veículo cadastrado")
+    if not caminhoes:
+        st.warning("❌ Nenhum caminhão cadastrado")
         return
     
-    opcoes_veiculo = {v['placa']: v['id'] for v in veiculos}
-    veiculo_placa = st.selectbox("Selecione o caminhão", list(opcoes_veiculo.keys()))
-    veiculo_id = opcoes_veiculo[veiculo_placa]
+    opcoes = {c['placa']: c for c in caminhoes}
+    placa_sel = st.selectbox("🚛 Selecione o Caminhão", list(opcoes.keys()))
+    cam_sel = opcoes[placa_sel]
     
-    if veiculo_placa:
-        # Gerar sugestão
-        sugestoes = sugerir_rodizio(veiculo_id)
+    # ==================== INFO DO CAMINHÃO ====================
+    col_info1, col_info2, col_info3 = st.columns(3)
+    
+    with col_info1:
+        st.metric("📍 Placa", cam_sel['placa'])
+    
+    with col_info2:
+        st.metric("🛞 Config", f"{cam_sel['config_eixos']} pneus")
+    
+    with col_info3:
+        st.metric("📊 KM Atual", f"{cam_sel['km_atual']:,} km")
+    
+    # ==================== GERAR SUGESTÃO ====================
+    st.markdown("---")
+    st.markdown("## 💡 Sugestão de Rodízio Automática")
+    st.markdown("""
+    O sistema analisa o desgaste de cada pneu e sugere as melhores trocas
+    para maximizar a vida útil da frota.
+    """)
+    
+    col_botoes = st.columns(3)
+    
+    with col_botoes[0]:
+        if st.button("🔍 Gerar Sugestão de Rodízio", key="gerar_sugestao"):
+            st.session_state['mostrar_sugestao'] = True
+            st.session_state['sugestoes'] = None  # Reset
+    
+    # ==================== MOSTRAR SUGESTÃO ====================
+    if st.session_state.get('mostrar_sugestao'):
+        with st.spinner("⏳ Analisando desgaste dos pneus..."):
+            sugestoes = sugerir_rodizio_automatico(cam_sel['id'])
         
-        if not sugestoes:
-            st.warning("Nenhuma sugestão de rodízio necessária no momento")
-            return
-        
-        st.subheader(f"💡 Sugestões de Rodízio")
-        
-        # Exibir sugestões
-        for idx, sugestao in enumerate(sugestoes):
-            col1, col2, col3 = st.columns(3)
+        if sugestoes:
+            st.session_state['sugestoes'] = sugestoes
             
-            with col1:
-                st.metric(
-                    "Trocar de",
-                    sugestao['trocar_de']['marca_fogo'],
-                    f"Desgaste: {sugestao['trocar_de']['desgaste_score']:.0f}%"
+            st.success(f"✅ Encontradas {len(sugestoes)} sugestões de troca!")
+            
+            # Mostrar cada sugestão em card
+            for idx, sugestao in enumerate(sugestoes, 1):
+                with st.expander(
+                    f"**Sugestão {idx}**: Trocar {sugestao['trocar_de']['marca_fogo']} "
+                    f"({sugestao['trocar_de']['desgaste_pct']}% desgastado) "
+                    f"→ {sugestao['trocar_para']['marca_fogo']} (+{sugestao['economia_km']} km)",
+                    expanded=(idx == 1)
+                ):
+                    col_de, col_seta, col_para = st.columns([3, 1, 3])
+                    
+                    with col_de:
+                        st.markdown("### ❌ Remover")
+                        st.markdown(f"""
+                        **Pneu**: {sugestao['trocar_de']['marca_fogo']}
+                        **Posição**: {sugestao['trocar_de']['posicao']}
+                        **Desgaste**: {sugestao['trocar_de']['desgaste_pct']}%
+                        **Vida**: {sugestao['trocar_de']['km_vida']} km
+                        """)
+                    
+                    with col_seta:
+                        st.markdown("<br><br>⬇️ Substituir ⬇️", unsafe_allow_html=True)
+                    
+                    with col_para:
+                        st.markdown("### ✅ Instalar")
+                        st.markdown(f"""
+                        **Pneu**: {sugestao['trocar_para']['marca_fogo']}
+                        **Posição**: {sugestao['trocar_de']['posicao']}
+                        **Ganho**: +{sugestao['economia_km']} km
+                        **Vida**: {sugestao['trocar_para']['km_vida']} km
+                        """)
+                    
+                    st.info(f"💡 Economia esperada: **{sugestao['economia_km']} km** de vida útil adicional")
+            
+            # ==================== EXECUTAR RODÍZIO ====================
+            st.markdown("---")
+            
+            col_exec1, col_exec2 = st.columns(2)
+            
+            with col_exec1:
+                km_atual = st.number_input(
+                    "KM atual do veículo",
+                    value=cam_sel['km_atual'],
+                    step=1000,
+                    key="km_exec"
                 )
             
-            with col2:
-                st.metric(
-                    "Trocar para",
-                    sugestao['trocar_para']['marca_fogo'],
-                    f"Desgaste: {sugestao['trocar_para']['desgaste_score']:.0f}%"
+            with col_exec2:
+                motivo = st.selectbox(
+                    "Motivo do Rodízio",
+                    ["Rotina 8.000 km", "Rotina 16.000 km", "Desgaste Irregular", 
+                     "Inspeção", "Manutenção", "Outro"],
+                    key="motivo_exec"
                 )
             
-            with col3:
-                st.metric(
-                    "Economia esperada",
-                    f"{sugestao['economia_percentual']:.1f}%",
-                    "Vida útil adicional"
-                )
+            if st.button("✅ EXECUTAR RODÍZIO", key="exec_rodizio", use_container_width=True):
+                with st.spinner("⏳ Registrando rodízio..."):
+                    sucesso = executar_rodizio(
+                        veiculo_id=cam_sel['id'],
+                        sugestoes=sugestoes,
+                        usuario_id=user_id,
+                        km_veiculo=int(km_atual),
+                        motivo=motivo
+                    )
+                
+                if sucesso:
+                    st.success("✅ Rodízio executado com sucesso!")
+                    st.balloons()
+                    st.session_state['mostrar_sugestao'] = False
+                    st.session_state['sugestoes'] = None
+                    st.rerun()
+                else:
+                    st.error("❌ Erro ao executar rodízio")
+        else:
+            st.warning("ℹ️ Nenhuma sugestão de rodízio necessária no momento")
+    
+    # ==================== HISTÓRICO ====================
+    st.markdown("---")
+    st.markdown("## 📜 Histórico de Rodízios")
+    
+    historico = obter_historico_rodizio_veiculo(cam_sel['id'], limite=10)
+    
+    if historico:
+        df_hist = pd.DataFrame(historico)
         
-        # Botão confirmar
-        if st.button("✅ Aprovar Sugestão", key="approve_suggestion"):
-            
-            # Criar ordem de rodízio
-            rodizio_id = f"ROD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            
-            # Executar trocas
-            for sugestao in sugestoes:
-                pneu_de = sugestao['trocar_de']
-                pneu_para = sugestao['trocar_para']
-                
-                # Atualizar pneu que sai
-                run_query("""
-                    UPDATE pneus 
-                    SET status = 'ESTOQUE', caminhao_atual_id = NULL, posicao_atual = NULL
-                    WHERE id = %s
-                """, (pneu_de['id'],))
-                
-                # Atualizar pneu que entra
-                run_query("""
-                    UPDATE pneus 
-                    SET status = 'MONTADO', caminhao_atual_id = %s, posicao_atual = %s
-                    WHERE id = %s
-                """, (veiculo_id, pneu_de['posicao_atual'], pneu_para['id']))
-                
-                # Registrar movimento
-                run_query("""
-                    INSERT INTO movimentacoes (pneu_id, tipo_movimento, origem_posicao, destino_posicao, km_momento, usuario_responsavel)
-                    VALUES (%s, 'RODIZIO', %s, %s, %s, %s)
-                """, (pneu_de['id'], pneu_de['posicao_atual'], pneu_para['posicao_atual'], 0, user_id))
-            
-            st.success(f"✅ Rodízio aprovado! ID: {rodizio_id}")
-            
-            # Gerar QR code
-            qr_buf = gerar_qr_rodizio(rodizio_id)
-            st.image(qr_buf, caption="Escaneie este QR no campo", use_column_width=True)
-            
-            # Instruções para operador
-            st.info("""
-            📱 Instruções para operador:
-            1. Escaneie o QR code acima
-            2. Siga a lista de trocas
-            3. Confirme cada troca conforme realiza
-            4. Clique "Rodízio Completo"
-            """)
+        # Formatar datas
+        df_hist['data_rodizio'] = pd.to_datetime(df_hist['data_rodizio']).dt.strftime('%d/%m/%Y %H:%M')
+        
+        st.dataframe(
+            df_hist[[
+                'data_rodizio', 'km_veiculo', 'motivo'
+            ]].rename(columns={
+                'data_rodizio': 'Data',
+                'km_veiculo': 'KM do Veículo',
+                'motivo': 'Motivo'
+            }),
+            use_container_width=True
+        )
+    else:
+        st.info("Nenhum rodízio registrado para este veículo")
+
+if __name__ == "__main__":
+    render_rodizio_v2()
