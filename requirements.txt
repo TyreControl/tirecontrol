@@ -10,3 +10,9 @@ requests
 streamlit-autorefresh
 streamlit-js-eval
 openai>=1.0.0
+fastapi
+uvicorn
+qrcode
+Pillow
+reportlab
+numpy
