@@ -115,8 +115,8 @@ def verificar_alertas_automaticos(cliente_id):
                     usuario_id='SISTEMA'
                 )
     except Exception as e:
-        print(f"Erro na verificação automática: {e}") 
-        # Ou use st.error se quiser mostrar na tela, mas print é mais seguro para jobs de fundo
+        # Este except fecha o bloco try corretamente
+        print(f"Erro na verificação automática: {e}")
 
 def render_sistema_alertas():
     """Interface Streamlit para visualizar alertas"""
@@ -128,15 +128,13 @@ def render_sistema_alertas():
     
     usuario_id = st.session_state['usuario_id']
     
-    # Buscar cliente_id
-    query_cliente = "SELECT cliente_id FROM usuarios WHERE id = %s"
-    resultado = run_query(query_cliente, (usuario_id,))
+    # Buscar cliente_id da sessão ou banco
+    # Usamos o ID que já está na sessão (carregado no login ou no main)
+    cliente_id = st.session_state.get('cliente_id')
     
-    if not resultado:
-        st.error("Usuário não encontrado")
+    if not cliente_id:
+        st.error("Cliente não configurado na sessão.")
         return
-    
-    cliente_id = resultado[0]['cliente_id']
     
     # Atualizar alertas automáticos
     if st.button("🔄 Atualizar Alertas"):
@@ -167,7 +165,7 @@ def render_sistema_alertas():
                 with col2:
                     if st.button("Resolver", key=f"resolve_{alerta['alert_id']}"):
                         if resolver_alerta(alerta['alert_id']):
-                            st.success("Alerta resolvido!")
+                            st.success("Resolvido!")
                             st.rerun()
         
         elif severidade == 'ALTO':
@@ -181,7 +179,7 @@ def render_sistema_alertas():
                 with col2:
                     if st.button("Resolver", key=f"resolve_{alerta['alert_id']}"):
                         if resolver_alerta(alerta['alert_id']):
-                            st.success("Alerta resolvido!")
+                            st.success("Resolvido!")
                             st.rerun()
         
         else:
@@ -195,7 +193,7 @@ def render_sistema_alertas():
                 with col2:
                     if st.button("Resolver", key=f"resolve_{alerta['alert_id']}"):
                         if resolver_alerta(alerta['alert_id']):
-                            st.success("Alerta resolvido!")
+                            st.success("Resolvido!")
                             st.rerun()
     
     # Estatísticas

@@ -16,8 +16,8 @@ def check_login(username, password):
     user = None
     try:
         with conn.cursor() as cursor:
-            # Busca o usuário pelo username
-            cursor.execute("SELECT id, nome, password_hash, role FROM usuarios WHERE username = %s", (username,))
+            # Busca o usuário pelo username, AGORA INCLUINDO cliente_id
+            cursor.execute("SELECT id, nome, password_hash, role, cliente_id FROM usuarios WHERE username = %s", (username,))
             user = cursor.fetchone()
     except Exception as e:
         st.error(f"Erro ao consultar usuário: {e}")
@@ -25,15 +25,16 @@ def check_login(username, password):
         release_connection(conn)
 
     if user:
-        # CORREÇÃO AQUI: Acessamos pelo NOME da coluna, não pelo número [2]
         password_hash = user['password_hash'] 
         
         if hash_password(password) == password_hash:
-            # Salva informações na sessão (também usando nomes)
+            # Salva informações na sessão
             st.session_state['logged_in'] = True
             st.session_state['user_id'] = user['id']
             st.session_state['user_name'] = user['nome']
             st.session_state['user_role'] = user['role']
+            # Salva o cliente_id na sessão para uso global
+            st.session_state['cliente_id'] = user['cliente_id']
             return True
             
     return False
