@@ -7,14 +7,14 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import login
 import frota
-import pneus  
+import pneus  # ← NOVO (era pneus antes)
 import movimentacoes
 import analise_cpk
 import sistema_alertas
 import relatorios
 import cadastro_cliente
-import fluxo_rodizio 
-from database import get_todos_clientes, get_detalhes_cliente 
+import fluxo_rodizio  # ← NOVO (era fluxo_rodizio antes)
+from database import get_todos_clientes, get_detalhes_cliente  # ← ATUALIZADO
 
 st.set_page_config(
     page_title="Tyre Control - Gestão Profissional",
