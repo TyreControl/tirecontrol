@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-main_fixed.py - TyreControl Main Application (STABLE VERSION)
-Removed non-existent v2 imports, using stable version only
+main.py - TyreControl Application (STABLE VERSION - ADAPTADO PARA SEU BANCO)
+Usa apenas funções que existem em seu database.py
 """
 
 import streamlit as st
@@ -14,16 +14,19 @@ import os
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import only stable modules (NO v2)
+# Import only functions that exist in YOUR database.py
 from database import (
     run_query,
-    get_user_by_email,
-    create_user,
-    get_client_vehicles,
-    get_client_tires,
-    get_tire_history,
-    get_vehicle_tires,
-    get_mapa_pneus_dinamico,
+    get_pneu_by_id,
+    get_pneus_by_veiculo,
+    atualizar_posicao_pneu,
+    atualizar_status_pneu,
+    validar_cadastro_pneu,
+    validar_movimento,
+    listar_alertas_ativos,
+    get_todos_clientes,
+    get_detalhes_cliente,
+    atualizar_dados_cliente,
 )
 
 # Page config
@@ -46,303 +49,311 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# AUTHENTICATION
+# SESSION STATE INITIALIZATION
 # ============================================================================
 
 def init_session():
     """Initialize session state"""
-    if 'user_id' not in st.session_state:
-        st.session_state.user_id = None
-    if 'user_email' not in st.session_state:
-        st.session_state.user_email = None
-    if 'user_type' not in st.session_state:
-        st.session_state.user_type = None
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'user_role' not in st.session_state:
+        st.session_state.user_role = None
+    if 'cliente_id' not in st.session_state:
+        st.session_state.cliente_id = None
+
+# ============================================================================
+# AUTHENTICATION
+# ============================================================================
 
 def login_page():
-    """Login/Register page"""
+    """Simple login page"""
     st.title("🛞 TyreControl")
     st.markdown("### Sistema de Gestão de Pneus e Frota")
     
-    tab1, tab2 = st.tabs(["Login", "Cadastro"])
+    col1, col2 = st.columns([1, 1])
     
-    with tab1:
-        st.subheader("Entre na sua conta")
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Senha", type="password", key="login_password")
+    with col1:
+        st.info("👤 **Acesso de Demonstração**")
+        role = st.selectbox("Selecione seu papel:", ["Admin", "Cliente", "Técnico"])
         
         if st.button("Entrar", use_container_width=True):
-            if email and password:
-                user = get_user_by_email(email)
-                if user and user['senha'] == password:  # In production, use hashing!
-                    st.session_state.user_id = user['id']
-                    st.session_state.user_email = user['email']
-                    st.session_state.user_type = user['tipo_usuario']
-                    st.success("✅ Login realizado com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("❌ Email ou senha incorretos")
-            else:
-                st.warning("⚠️ Preencha todos os campos")
+            st.session_state.logged_in = True
+            st.session_state.user_role = role
+            st.session_state.cliente_id = "demo-cliente"
+            st.success(f"✅ Bem-vindo, {role}!")
+            st.rerun()
     
-    with tab2:
-        st.subheader("Criar nova conta")
-        new_email = st.text_input("Email", key="register_email")
-        new_password = st.text_input("Senha", type="password", key="register_password")
-        new_password_confirm = st.text_input("Confirmar Senha", type="password", key="register_password_confirm")
-        user_type = st.selectbox("Tipo de Usuário", ["Cliente", "Oficina", "Administrador"])
-        
-        if st.button("Cadastrar", use_container_width=True):
-            if new_email and new_password and new_password_confirm:
-                if new_password == new_password_confirm:
-                    if len(new_password) >= 6:
-                        result = create_user(new_email, new_password, user_type)
-                        if result:
-                            st.success("✅ Cadastro realizado! Faça login para continuar.")
-                        else:
-                            st.error("❌ Este email já está cadastrado")
-                    else:
-                        st.warning("⚠️ Senha deve ter no mínimo 6 caracteres")
-                else:
-                    st.error("❌ As senhas não conferem")
-            else:
-                st.warning("⚠️ Preencha todos os campos")
+    with col2:
+        st.warning("⚠️ **Modo Demonstração**")
+        st.write("Esta é uma versão de demonstração.")
+        st.write("Use dados reais após conectar ao banco de dados.")
 
 # ============================================================================
-# MAIN APPLICATION
+# PAGES
 # ============================================================================
 
 def home_page():
     """Home page with dashboard"""
-    st.title("🏠 Home")
+    st.title("🏠 Dashboard")
     
-    # Get user data
-    user_vehicles = get_client_vehicles(st.session_state.user_id)
-    user_tires = get_client_tires(st.session_state.user_id)
-    
-    # Metrics
     col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
-        st.metric("🚚 Caminhões", len(user_vehicles) if user_vehicles else 0)
-    
-    with col2:
-        st.metric("🛞 Pneus em Estoque", len([t for t in (user_tires or []) if t['status'] == 'ESTOQUE']))
-    
-    with col3:
-        st.metric("⚠️ Pneus em Alerta", len([t for t in (user_tires or []) if t['status'] == 'ALERTA']))
-    
-    with col4:
-        st.metric("🔄 Pneus Rodando", len([t for t in (user_tires or []) if t['status'] == 'EM_USO']))
+    try:
+        # Try to get real data
+        alertas = listar_alertas_ativos()
+        num_alertas = len(alertas) if alertas else 0
+        
+        with col1:
+            st.metric("⚠️ Alertas Ativos", num_alertas)
+        with col2:
+            st.metric("🛞 Pneus Totais", "N/A")
+        with col3:
+            st.metric("🚚 Caminhões", "N/A")
+        with col4:
+            st.metric("🔄 Rodízios", "N/A")
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao carregar dados: {str(e)}")
+        
+        with col1:
+            st.metric("⚠️ Alertas Ativos", 0)
+        with col2:
+            st.metric("🛞 Pneus Totais", "N/A")
+        with col3:
+            st.metric("🚚 Caminhões", "N/A")
+        with col4:
+            st.metric("🔄 Rodízios", "N/A")
     
     st.divider()
     
-    # Recent activity
-    st.subheader("📋 Atividade Recente")
-    if user_tires:
-        recent_tires = pd.DataFrame(user_tires[:5])
-        st.dataframe(recent_tires, use_container_width=True)
-    else:
-        st.info("Nenhuma atividade recente")
+    # Alertas section
+    st.subheader("🔴 Alertas Críticos")
+    try:
+        alertas = listar_alertas_ativos()
+        if alertas and len(alertas) > 0:
+            df_alertas = pd.DataFrame(alertas[:5])
+            st.dataframe(df_alertas, use_container_width=True)
+        else:
+            st.info("✅ Nenhum alerta crítico no momento")
+    except Exception as e:
+        st.info("✅ Nenhum alerta crítico no momento")
 
-def cadastro_lote_page():
-    """Tire batch registration page"""
-    st.title("📝 Cadastro de Lote de Pneus")
-    
-    with st.form("tire_batch_form"):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            batch_code = st.text_input("Código do Lote", placeholder="ex: LOTE-2026-001")
-            quantity = st.number_input("Quantidade de Pneus", min_value=1, max_value=1000)
-        
-        with col2:
-            tire_brand = st.selectbox("Marca", ["Michelin", "Bridgestone", "Goodyear", "Continental", "Pirelli"])
-            tire_model = st.text_input("Modelo", placeholder="ex: XZE Truck")
-        
-        size = st.text_input("Tamanho", placeholder="ex: 315/80R22.5")
-        generate_codes = st.checkbox("✓ Gerar números de série automaticamente", value=True)
-        
-        if st.form_submit_button("Registrar Lote", use_container_width=True):
-            if batch_code and quantity and tire_brand and tire_model and size:
-                st.success(f"✅ Lote {batch_code} cadastrado com {quantity} pneus!")
-                st.balloons()
-            else:
-                st.error("❌ Preencha todos os campos obrigatórios")
-
-def pneus_page():
+def gestao_pneus_page():
     """Tire management page"""
     st.title("🛞 Gestão de Pneus")
     
-    tab1, tab2, tab3 = st.tabs(["📊 Inventário", "🔄 Histórico", "📈 Análise"])
+    tab1, tab2, tab3 = st.tabs(["📊 Buscar Pneu", "🔧 Atualizar Status", "📈 Histórico de Alertas"])
     
     with tab1:
-        st.subheader("Inventário de Pneus")
-        user_tires = get_client_tires(st.session_state.user_id)
+        st.subheader("Buscar Dados do Pneu")
+        pneu_id = st.text_input("ID do Pneu", placeholder="ex: PNEU-001")
         
-        if user_tires and len(user_tires) > 0:
-            df_tires = pd.DataFrame(user_tires)
-            
-            # Filter by status
-            filter_status = st.selectbox("Filtrar por Status", ["Todos", "ESTOQUE", "EM_USO", "ALERTA", "DESCARTADO"])
-            if filter_status != "Todos":
-                df_tires = df_tires[df_tires['status'] == filter_status]
-            
-            st.dataframe(df_tires, use_container_width=True)
-            
-            # Download CSV
-            csv = df_tires.to_csv(index=False)
-            st.download_button(
-                label="📥 Baixar CSV",
-                data=csv,
-                file_name=f"pneus_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
-        else:
-            st.info("ℹ️ Nenhum pneu cadastrado ainda")
+        if st.button("🔍 Buscar", use_container_width=True):
+            if pneu_id:
+                try:
+                    pneu = get_pneu_by_id(pneu_id)
+                    if pneu:
+                        st.success("✅ Pneu encontrado!")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Marca Fogo", pneu.get('marca_fogo', 'N/A'))
+                        with col2:
+                            st.metric("Status", pneu.get('status', 'N/A'))
+                        with col3:
+                            st.metric("Posição", pneu.get('posicao_atual', 'N/A'))
+                        
+                        st.dataframe(pd.DataFrame([pneu]), use_container_width=True)
+                    else:
+                        st.warning("⚠️ Pneu não encontrado")
+                except Exception as e:
+                    st.error(f"❌ Erro ao buscar pneu: {str(e)}")
+            else:
+                st.warning("⚠️ Digite o ID do pneu")
     
     with tab2:
-        st.subheader("Histórico de Movimentação")
-        selected_tire_id = st.text_input("ID do Pneu (opcional)")
+        st.subheader("Atualizar Status do Pneu")
         
-        if st.button("Buscar Histórico"):
-            if selected_tire_id:
-                history = get_tire_history(selected_tire_id)
-                if history:
-                    df_history = pd.DataFrame(history)
-                    st.dataframe(df_history, use_container_width=True)
-                else:
-                    st.warning("Nenhum histórico encontrado")
+        pneu_update_id = st.text_input("ID do Pneu a Atualizar", placeholder="ex: PNEU-001", key="pneu_update")
+        novo_status = st.selectbox("Novo Status", ["NOVO", "BOM", "ALERTA", "DESCARTADO", "RECAPAGEM", "REPOUSO"])
+        
+        if st.button("✅ Atualizar Status", use_container_width=True):
+            if pneu_update_id:
+                try:
+                    resultado = atualizar_status_pneu(pneu_update_id, novo_status)
+                    if resultado:
+                        st.success(f"✅ Status do pneu {pneu_update_id} atualizado para {novo_status}")
+                    else:
+                        st.warning("⚠️ Não foi possível atualizar o pneu")
+                except Exception as e:
+                    st.error(f"❌ Erro: {str(e)}")
+            else:
+                st.warning("⚠️ Digite o ID do pneu")
     
     with tab3:
-        st.subheader("Análise de Pneus")
-        st.info("📊 Gráficos e análises detalhadas em desenvolvimento")
+        st.subheader("Alertas do Sistema")
+        try:
+            alertas = listar_alertas_ativos()
+            if alertas and len(alertas) > 0:
+                df_alertas = pd.DataFrame(alertas)
+                st.dataframe(df_alertas, use_container_width=True)
+                
+                # Download CSV
+                csv = df_alertas.to_csv(index=False)
+                st.download_button(
+                    label="📥 Baixar CSV",
+                    data=csv,
+                    file_name=f"alertas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            else:
+                st.info("✅ Nenhum alerta no momento")
+        except Exception as e:
+            st.warning(f"⚠️ Erro ao listar alertas: {str(e)}")
 
-def veiculos_page():
-    """Vehicle management page"""
-    st.title("🚚 Gestão de Veículos")
-    
-    user_vehicles = get_client_vehicles(st.session_state.user_id)
-    
-    if user_vehicles and len(user_vehicles) > 0:
-        selected_vehicle = st.selectbox(
-            "Selecione um Caminhão",
-            [f"{v['placa']} - {v['modelo']}" for v in user_vehicles]
-        )
-        
-        vehicle = user_vehicles[[f"{v['placa']} - {v['modelo']}" for v in user_vehicles].index(selected_vehicle)]
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Placa", vehicle['placa'])
-        with col2:
-            st.metric("Modelo", vehicle['modelo'])
-        with col3:
-            st.metric("Configuração", vehicle['config_pneus'])
-        
-        st.divider()
-        st.subheader("🛞 Pneus Montados")
-        
-        vehicle_tires = get_vehicle_tires(vehicle['id'])
-        if vehicle_tires:
-            df_v_tires = pd.DataFrame(vehicle_tires)
-            st.dataframe(df_v_tires, use_container_width=True)
-        else:
-            st.info("Nenhum pneu montado neste veículo")
-    else:
-        st.info("ℹ️ Nenhum veículo cadastrado")
-
-def atribuir_pneus_page():
-    """Assign tires to vehicle page"""
-    st.title("🔧 Atribuir Pneus")
-    
-    user_vehicles = get_client_vehicles(st.session_state.user_id)
-    user_tires = get_client_tires(st.session_state.user_id)
-    
-    if not user_vehicles:
-        st.warning("⚠️ Nenhum veículo cadastrado")
+def gestao_clientes_page():
+    """Client management page (Admin only)"""
+    if st.session_state.user_role != "Admin":
+        st.warning("⚠️ Esta página é apenas para Administradores")
         return
     
-    selected_vehicle = st.selectbox(
-        "Selecione o Caminhão",
-        [f"{v['placa']} - {v['modelo']}" for v in user_vehicles]
-    )
+    st.title("👥 Gestão de Clientes")
     
-    vehicle = user_vehicles[[f"{v['placa']} - {v['modelo']}" for v in user_vehicles].index(selected_vehicle)]
-    
-    st.info(f"ℹ️ Configuração: {vehicle['config_pneus']}")
-    
-    if user_tires and len(user_tires) > 0:
-        available_tires = [t for t in user_tires if t['status'] == 'ESTOQUE']
+    try:
+        clientes = get_todos_clientes()
         
-        if available_tires:
-            mapa = get_mapa_pneus_dinamico(vehicle['id'])
+        if clientes and len(clientes) > 0:
+            # Select client
+            opcoes_clientes = [f"{c['nome_empresa']} ({c['nome_fantasia']})" for c in clientes]
+            cliente_selecionado_str = st.selectbox("Selecione um Cliente", opcoes_clientes)
             
-            st.subheader("📍 Mapa de Posições")
+            # Get selected client
+            cliente_idx = opcoes_clientes.index(cliente_selecionado_str)
+            cliente = clientes[cliente_idx]
             
-            # Display positions dynamically based on vehicle config
-            if mapa:
-                cols = st.columns(len(mapa) // 2)  # Organize in rows
-                for idx, pos in enumerate(mapa):
-                    with cols[idx % len(cols)]:
-                        selected_tire = st.selectbox(
-                            f"Posição {pos}",
-                            [f"{t['codigo']}" for t in available_tires],
-                            key=f"pos_{pos}"
+            st.divider()
+            
+            # Display client details
+            st.subheader(f"📋 {cliente['nome_empresa']}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Nome da Empresa", cliente['nome_empresa'])
+                st.metric("Nome Responsável", cliente.get('nome_responsavel', 'N/A'))
+            with col2:
+                st.metric("Nome Fantasia", cliente['nome_fantasia'])
+                st.metric("Contato", cliente.get('contato_responsavel', 'N/A'))
+            
+            st.divider()
+            
+            # Edit client
+            st.subheader("✏️ Editar Informações")
+            
+            with st.form("edit_cliente_form"):
+                nome_empresa = st.text_input("Nome da Empresa", value=cliente['nome_empresa'])
+                nome_fantasia = st.text_input("Nome Fantasia", value=cliente['nome_fantasia'])
+                responsavel = st.text_input("Responsável", value=cliente.get('nome_responsavel', ''))
+                contato = st.text_input("Contato", value=cliente.get('contato_responsavel', ''))
+                
+                if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
+                    try:
+                        resultado = atualizar_dados_cliente(
+                            cliente['id'],
+                            {
+                                'nome_empresa': nome_empresa,
+                                'nome_fantasia': nome_fantasia,
+                                'nome_responsavel': responsavel,
+                                'contato_responsavel': contato
+                            }
                         )
-            
-            if st.button("💾 Salvar Atribuição"):
-                st.success("✅ Pneus atribuídos com sucesso!")
+                        if resultado:
+                            st.success("✅ Cliente atualizado com sucesso!")
+                        else:
+                            st.warning("⚠️ Erro ao atualizar cliente")
+                    except Exception as e:
+                        st.error(f"❌ Erro: {str(e)}")
         else:
-            st.warning("⚠️ Nenhum pneu disponível em estoque")
-    else:
-        st.warning("⚠️ Nenhum pneu cadastrado")
+            st.info("ℹ️ Nenhum cliente cadastrado")
+    
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar clientes: {str(e)}")
+
+def relatorios_page():
+    """Reports page"""
+    st.title("📊 Relatórios")
+    
+    st.info("📋 Seção de relatórios em desenvolvimento")
+    
+    tab1, tab2, tab3 = st.tabs(["Pneus", "Alertas", "Movimentações"])
+    
+    with tab1:
+        st.subheader("Relatório de Pneus")
+        st.write("Selecione filtros:")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            status_filter = st.selectbox("Status", ["Todos", "NOVO", "BOM", "ALERTA", "DESCARTADO"])
+        with col2:
+            marca_filter = st.text_input("Marca (opcional)")
+        
+        st.info("Click em 'Gerar Relatório' para ver os dados")
+    
+    with tab2:
+        st.subheader("Relatório de Alertas")
+        st.write("Alertas por tipo e severidade")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            tipo_alerta = st.selectbox("Tipo de Alerta", ["Todos", "Desgaste", "Tempo", "Manutenção"])
+        with col2:
+            severidade = st.selectbox("Severidade", ["Todos", "CRITICO", "ALTO", "MEDIO", "BAIXO"])
+    
+    with tab3:
+        st.subheader("Relatório de Movimentações")
+        st.write("Histórico de movimentações de pneus")
 
 # ============================================================================
-# MAIN APPLICATION FLOW
+# MAIN APPLICATION
 # ============================================================================
 
 def main():
     """Main application"""
     init_session()
     
-    if not st.session_state.user_id:
+    if not st.session_state.logged_in:
         login_page()
     else:
         # Sidebar navigation
         with st.sidebar:
-            st.title(f"👤 {st.session_state.user_email}")
+            st.title(f"👤 {st.session_state.user_role}")
             st.divider()
             
             selected = st.radio(
-                "Menu Principal",
+                "Menu",
                 [
                     "🏠 Home",
-                    "📝 Cadastro de Lote",
                     "🛞 Gestão de Pneus",
-                    "🚚 Gestão de Veículos",
-                    "🔧 Atribuir Pneus",
+                    "👥 Gestão de Clientes",
+                    "📊 Relatórios",
                 ]
             )
             
             st.divider()
             
             if st.button("🚪 Sair", use_container_width=True):
-                st.session_state.user_id = None
-                st.session_state.user_email = None
-                st.session_state.user_type = None
+                st.session_state.logged_in = False
+                st.session_state.user_role = None
+                st.session_state.cliente_id = None
                 st.rerun()
         
         # Route to selected page
         if selected == "🏠 Home":
             home_page()
-        elif selected == "📝 Cadastro de Lote":
-            cadastro_lote_page()
         elif selected == "🛞 Gestão de Pneus":
-            pneus_page()
-        elif selected == "🚚 Gestão de Veículos":
-            veiculos_page()
-        elif selected == "🔧 Atribuir Pneus":
-            atribuir_pneus_page()
+            gestao_pneus_page()
+        elif selected == "👥 Gestão de Clientes":
+            gestao_clientes_page()
+        elif selected == "📊 Relatórios":
+            relatorios_page()
 
 if __name__ == "__main__":
     main()
