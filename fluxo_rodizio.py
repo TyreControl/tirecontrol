@@ -1,19 +1,19 @@
 """
-FLUXO 5 - fluxo_rodizio_v2.py
+FLUXO 5 - fluxo_rodizio.py
 Implementa: Sugestão + Execução de Rodízio completo
 """
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from database_v2 import (
+from database import (
     sugerir_rodizio_automatico,
     executar_rodizio,
     obter_historico_rodizio_veiculo,
     run_query
 )
 
-def render_rodizio_v2():
+def render_rodizio():
     """Interface para sugerir e executar rodízio"""
     
     st.title("🔄 Gerenciador de Rodízio de Pneus")
@@ -182,4 +182,4 @@ def render_rodizio_v2():
         st.info("Nenhum rodízio registrado para este veículo")
 
 if __name__ == "__main__":
-    render_rodizio_v2()
+    render_rodizio()
