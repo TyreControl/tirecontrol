@@ -459,3 +459,51 @@ def obter_status_pneu_visual(pneu):
         return "🟡", "ATENÇÃO", "#fff4cc"
     else:
         return "🟢", "OK", "#ccffcc"
+
+# ============ FLUXO 0: CLIENTES ============
+
+def get_todos_clientes():
+    """Retorna todos os clientes"""
+    query = """
+    SELECT id, razao_social, nome_fantasia, cnpj
+    FROM public.clientes
+    ORDER BY razao_social
+    """
+    return run_query(query)
+
+
+def get_detalhes_cliente(cliente_id):
+    """Retorna dados completos de um cliente"""
+    query = """
+    SELECT *
+    FROM public.clientes
+    WHERE id = %s
+    """
+    result = run_query(query, (cliente_id,))
+    return result[0] if result else None
+
+
+def atualizar_dados_cliente(cliente_id, dados: dict):
+    """
+    Atualiza dados cadastrais do cliente
+    dados = {campo: valor}
+    """
+    if not dados:
+        return False
+
+    campos = []
+    valores = []
+
+    for campo, valor in dados.items():
+        campos.append(f"{campo} = %s")
+        valores.append(valor)
+
+    valores.append(cliente_id)
+
+    query = f"""
+    UPDATE public.clientes
+    SET {', '.join(campos)}
+    WHERE id = %s
+    """
+
+    return run_query(query, tuple(valores))
