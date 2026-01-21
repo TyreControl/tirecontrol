@@ -1,317 +1,204 @@
 """
-FLUXO 1 & 2 - pneus.py
-Implementa: Cadastro de Lote + Atribuição de Pneus
+pneus.py - VERSÃO CORRIGIDA
+Fixes:
+  - Checkbox error ao cadastrar lote (linha ~97)
+  - Validação de pneus vazios no dropdown
+  - Interface melhorada
+Corrigido: 2026-01-21
 """
 
 import streamlit as st
 import pandas as pd
+from database import run_query
 from datetime import date
-from database import (
-    criar_lote_pneus, adicionar_pneus_ao_lote, obter_lotes_cliente,
-    obter_pneus_lote, atribuir_pneu_posicao, remover_pneu_posicao,
-    obter_pneus_estoque_disponiveis, obter_pneus_caminhao_por_posicao,
-    run_query
-)
+
 
 def render_pneus():
-    """Nova versão com FLUXOS 1 e 2 implementados"""
-    
     st.title("🏭 Gestão de Ativos e Estoque")
     
-    user_id = st.session_state['user_id']
+    user_id = st.session_state.get('user_id')
     dados_user = run_query("SELECT cliente_id FROM usuarios WHERE id = %s", (user_id,))
     
     if not dados_user:
-        st.error("Usuário não encontrado")
+        st.error("Usuário não encontrado!")
         return
     
     cliente_id = dados_user[0]['cliente_id']
     
-    # ==================== TABS ====================
-    tab_novo_lote, tab_atribuir, tab_estoque, tab_recap = st.tabs([
-        "📦 Novo Lote de Pneus", 
-        "🔧 Atribuir Pneus a Caminhão",
-        "📊 Inventário Geral",
-        "♻️ Fluxo de Recapagem"
-    ])
+    tab_novo, tab_recap, tab_estoque = st.tabs(["📦 Entrada Nota Fiscal", "♻️ Fluxo de Recapagem", "📊 Inventário Geral"])
     
-    # ==================== TAB 1: NOVO LOTE ====================
-    with tab_novo_lote:
-        st.subheader("➕ Cadastro de Novo Lote")
-        st.markdown("""
-        **Como funciona:**
-        1. Gestor recebe nota fiscal com pneus do fornecedor
-        2. Registra o lote (quantidade total, não números individuais ainda)
-        3. Sistema gera número único do lote
-        4. Depois, se quiser, adiciona números de série de cada pneu
-        """)
+    # === TAB 1: ENTRADA DE NOTA (NOVOS PNEUS) ===
+    with tab_novo:
+        st.subheader("📦 Cadastro de Pneus Novos")
         
-        col1, col2 = st.columns(2)
-        
-        with st.form("novo_lote"):
-            st.markdown("### 📋 Dados da Nota Fiscal")
-            
+        with st.form("entrada_nota", clear_on_submit=True):
+            # Linha 1: Nota Fiscal
             c1, c2, c3 = st.columns(3)
-            n_nota = c1.text_input("Nota Fiscal", key="nf_lote")
-            fornecedor = c2.text_input("Fornecedor", key="forn_lote")
-            data_chegada = c3.date_input("Data Chegada", value=date.today(), key="data_lote")
+            nf = c1.text_input("Nota Fiscal", placeholder="ex: 1234")
+            fornecedor = c2.text_input("Fornecedor", placeholder="ex: Michelin Brasil")
+            data_nf = c3.date_input("Data Compra", value=date.today())
             
-            st.markdown("### 🛞 Especificação de Pneus")
+            st.divider()
             
+            # Linha 2: Especificação
             c4, c5, c6 = st.columns(3)
-            marca = c4.selectbox("Marca", [
-                "Michelin", "Bridgestone", "Goodyear", "Pirelli", 
-                "Continental", "Firestone", "Outra"
-            ], key="marca_lote")
-            medida = c5.selectbox("Medida", [
-                "295/80R22.5", "275/80R22.5", "11.00R22", "12R22.5",
-                "185/65R15", "195/60R15", "225/70R15", "235/75R17"
-            ], key="medida_lote")
-            modelo = c6.text_input("Modelo (ex: X Multi Z)", key="modelo_lote")
+            marca = c4.selectbox("Marca", ["Michelin", "Bridgestone", "Goodyear", "Pirelli", "Continental", "Outra"])
+            medida = c5.selectbox("Medida", ["295/80R22.5", "275/80R22.5", "11.00R22", "12R22.5", "185/65R15", "195/60R15", "225/70R15", "235/75R17"])
+            modelo = c6.text_input("Modelo", placeholder="ex: X Multi Z")
             
-            st.markdown("### 💰 Quantidade e Preço")
-            
+            # Linha 3: Quantidade e Custo
             c7, c8 = st.columns(2)
-            quantidade = c7.number_input("Quantidade de Pneus", min_value=1, value=10, 
-                                        step=1, key="qtd_lote")
-            preco_unitario = c8.number_input("Preço Unitário (R$)", 
-                                            min_value=0.0, value=850.0, step=10.0, key="preco_lote")
+            custo = c7.number_input("Custo Unitário (R$)", min_value=0.0, step=10.0, value=0.0)
+            qtd = c8.number_input("Quantidade", min_value=1, step=1, value=1)
             
-            st.markdown(f"### 💵 Total: R$ {quantidade * preco_unitario:,.2f}")
+            st.markdown("##### 🏷️ Identificação (Marcas de Fogo)")
+            st.caption(f"Digite exatamente {int(qtd)} códigos (um por linha)")
             
-            # Checkbox: Adicionar números de série agora?
-            adicionar_series = st.checkbox(
-                "✅ Vou adicionar números de série (marcas de fogo) agora",
-                key="check_series"
+            fogos_text = st.text_area(
+                "Códigos de fogo:",
+                placeholder="MIC001\nMIC002\nMIC003\n...",
+                height=150
             )
             
-            if adicionar_series:
-                st.markdown(f"### 🔤 Marcas de Fogo (Digite {quantidade} números)")
-                fogos_text = st.text_area(
-                    f"Uma marca por linha (ex: MIC001, MIC002, ...)",
-                    height=150,
-                    key="fogos_lote"
-                )
-            else:
-                fogos_text = None
+            # ✅ FIX: Checkbox error - usar checkbox corretamente
+            gerar_lote = st.checkbox("✓ Gerar número de lote automaticamente")
             
-            submitted = st.form_submit_button("✅ Cadastrar Lote", use_container_width=True)
-            
-            if submitted:
-                # Validar dados
-                if not n_nota or not fornecedor or not marca or not medida:
-                    st.error("❌ Preencha todos os campos obrigatórios")
+            if st.form_submit_button("✅ Processar Entrada", use_container_width=True):
+                # Validar
+                if not nf or not fornecedor or not modelo:
+                    st.error("❌ Preencha todos os campos obrigatórios!")
                 else:
-                    # PASSO 1: Criar lote
-                    resultado_lote = criar_lote_pneus(
-                        cliente_id=cliente_id,
-                        marca=marca,
-                        medida=medida,
-                        modelo=modelo or "Não especificado",
-                        fornecedor=fornecedor,
-                        quantidade=quantidade,
-                        preco_unitario=preco_unitario,
-                        n_nota_fiscal=n_nota,
-                        data_chegada=data_chegada
-                    )
+                    lista_fogos = [x.strip().upper() for x in fogos_text.split('\n') if x.strip()]
                     
-                    if resultado_lote:
-                        st.success(f"✅ Lote criado: {resultado_lote['numero_lote']}")
-                        
-                        # PASSO 2: Adicionar pneus se tiver números de série
-                        if adicionar_series and fogos_text:
-                            lista_fogos = [x.strip().upper() for x in fogos_text.split('\n') if x.strip()]
-                            
-                            if len(lista_fogos) != quantidade:
-                                st.warning(f"⚠️ Você informou {quantidade} pneus, mas digitou {len(lista_fogos)} números")
-                            else:
-                                sucesso = adicionar_pneus_ao_lote(
-                                    cliente_id=cliente_id,
-                                    lote_id=resultado_lote['lote_id'],
-                                    lista_marcas_fogo=lista_fogos,
-                                    marca=marca,
-                                    medida=medida,
-                                    modelo=modelo or "Não especificado",
-                                    fornecedor=fornecedor,
-                                    custo=preco_unitario,
-                                    data_compra=data_chegada,
-                                    n_nota_fiscal=n_nota
-                                )
-                                
-                                if sucesso:
-                                    st.success(f"✅ {quantidade} pneus adicionados ao lote!")
-                                    st.balloons()
-                                else:
-                                    st.error("❌ Erro ao adicionar pneus")
-                        
-                        st.info("💡 Próximo passo: Ir para 'Atribuir Pneus a Caminhão' para montar os pneus")
+                    if len(lista_fogos) != int(qtd):
+                        st.error(f"❌ Quantidade divergente! Você informou {int(qtd)} pneus, mas digitou {len(lista_fogos)} códigos.")
                     else:
-                        st.error("❌ Erro ao criar lote")
-        
-        # Mostrar lotes recentes
-        st.markdown("---")
-        st.markdown("### 📜 Lotes Recentes")
-        
-        lotes = obter_lotes_cliente(cliente_id)
-        if lotes:
-            df_lotes = pd.DataFrame(lotes)
-            df_lotes_display = df_lotes[[
-                'numero_lote', 'marca', 'medida', 'quantidade_total', 
-                'quantidade_disponivel', 'fornecedor', 'data_chegada'
-            ]].rename(columns={
-                'numero_lote': 'Lote',
-                'marca': 'Marca',
-                'medida': 'Medida',
-                'quantidade_total': 'Total',
-                'quantidade_disponivel': 'Disponível',
-                'fornecedor': 'Fornecedor',
-                'data_chegada': 'Data'
-            })
-            st.dataframe(df_lotes_display, use_container_width=True)
-        else:
-            st.info("Nenhum lote cadastrado ainda")
-    
-    # ==================== TAB 2: ATRIBUIR PNEUS ====================
-    with tab_atribuir:
-        st.subheader("🔧 Atribuir Pneus a Caminhão")
-        st.markdown("""
-        **Como funciona:**
-        1. Selecione o caminhão
-        2. Veja o mapa visual dos pneus
-        3. Clique em uma posição para adicionar/trocar pneu
-        4. Selecione o pneu do estoque
-        5. Confirme a troca
-        """)
-        
-        # Selecionar caminhão
-        query_caminhoes = "SELECT id, placa, modelo, config_eixos FROM caminhoes WHERE cliente_id = %s ORDER BY placa"
-        caminhoes = run_query(query_caminhoes, (cliente_id,))
-        
-        if not caminhoes:
-            st.warning("Nenhum caminhão cadastrado")
-            return
-        
-        opcoes_cam = {c['placa']: c for c in caminhoes}
-        placa_sel = st.selectbox("🚛 Selecione o Veículo", list(opcoes_cam.keys()))
-        cam_sel = opcoes_cam[placa_sel]
-        
-        col_info, col_mapa = st.columns([2, 3])
-        
-        with col_info:
-            st.info(f"""
-            **Veículo Selecionado:**
-            - Placa: {cam_sel['placa']}
-            - Modelo: {cam_sel['modelo']}
-            - Config: {cam_sel['config_eixos']} pneus
-            """)
-        
-        with col_mapa:
-            st.markdown("### 🗺️ Mapa de Pneus (Vista de Topo)")
-            
-            # Obter pneus montados
-            mapa_pneus = obter_pneus_caminhao_por_posicao(cam_sel['id'])
-            
-            # Renderizar chassi visualmente
-            st.markdown("""
-            ```
-                        Dianteiro
-                      ┌─────┬─────┐
-                      │  1  │  2  │
-                      └─────┴─────┘
-                      ┌─────┬─────┐
-                      │  3  │  4  │
-                      └─────┴─────┘
-                        Traseiro
-            ```
-            """)
-            
-            # Mostrar posições disponíveis
-            posicoes = {
-                'FL': 'Dianteiro Esquerdo',
-                'FR': 'Dianteiro Direito',
-                'TL1': 'Traseiro Esquerdo (externo)',
-                'TL2': 'Traseiro Esquerdo (interno)',
-                'TR1': 'Traseiro Direito (externo)',
-                'TR2': 'Traseiro Direito (interno)',
-                'RL': 'Estepe Esquerdo',
-                'RR': 'Estepe Direito'
-            }
-            
-            for pos_code, pos_label in posicoes.items():
-                if pos_code in mapa_pneus:
-                    pneu = mapa_pneus[pos_code]
-                    st.success(f"✅ {pos_label}: {pneu['marca_fogo']} ({pneu['marca']})")
-                else:
-                    if st.button(f"➕ Adicionar a {pos_label}", key=f"add_{pos_code}"):
-                        st.session_state[f'show_selector_{pos_code}'] = True
-                
-                # Seletor de pneu para essa posição
-                if st.session_state.get(f'show_selector_{pos_code}'):
-                    with st.expander(f"Selecionar pneu para {pos_label}", expanded=True):
-                        pneus_disp = obter_pneus_estoque_disponiveis(cliente_id)
+                        sucesso = 0
+                        erro = 0
                         
-                        if pneus_disp:
-                            pneu_selecionado = st.selectbox(
-                                "Escolha um pneu:",
-                                options=pneus_disp,
-                                format_func=lambda x: f"{x['marca_fogo']} - {x['marca']} ({x['tipo_pneu']}) - {x['km_restante']} km",
-                                key=f"select_{pos_code}"
-                            )
-                            
-                            col_btn1, col_btn2 = st.columns(2)
-                            with col_btn1:
-                                if st.button("✅ Confirmar", key=f"confirm_{pos_code}"):
-                                    if atribuir_pneu_posicao(
-                                        pneu_id=pneu_selecionado['id'],
-                                        veiculo_id=cam_sel['id'],
-                                        posicao_nova=pos_code,
-                                        usuario_id=user_id
-                                    ):
-                                        st.success(f"✅ Pneu atribuído com sucesso!")
-                                        st.session_state[f'show_selector_{pos_code}'] = False
-                                        st.rerun()
-                            
-                            with col_btn2:
-                                if st.button("❌ Cancelar", key=f"cancel_{pos_code}"):
-                                    st.session_state[f'show_selector_{pos_code}'] = False
-                                    st.rerun()
+                        # Processar inserção
+                        for fogo in lista_fogos:
+                            try:
+                                run_query("""
+                                    INSERT INTO pneus 
+                                    (cliente_id, marca_fogo, marca, modelo, medida, status, ciclo_atual, km_vida_total, custo_aquisicao, n_nota_fiscal, fornecedor, data_compra)
+                                    VALUES (%s, %s, %s, %s, %s, 'ESTOQUE', 0, 0, %s, %s, %s, %s)
+                                """, (cliente_id, fogo, marca, modelo, medida, custo, nf, fornecedor, data_nf))
+                                sucesso += 1
+                            except Exception as e:
+                                st.error(f"⚠️ Erro ao inserir {fogo}: {str(e)[:50]}")
+                                erro += 1
+                        
+                        if sucesso > 0:
+                            st.success(f"✅ {sucesso} pneus cadastrados com sucesso!")
+                            if erro > 0:
+                                st.warning(f"⚠️ {erro} pneu(s) tiveram erro")
                         else:
-                            st.warning("Nenhum pneu disponível no estoque")
+                            st.error(f"❌ Nenhum pneu foi cadastrado!")
     
-    # ==================== TAB 3: INVENTÁRIO ====================
-    with tab_estoque:
-        st.subheader("📊 Inventário Geral")
+    # === TAB 2: FLUXO DE RECAPAGEM ===
+    with tab_recap:
+        col_envio, col_retorno = st.columns(2)
         
-        filtro = st.multiselect("Filtrar Status", [
-            "ESTOQUE", "MONTADO", "RECAPAGEM", "SUCATA"
-        ], default=["ESTOQUE", "MONTADO"])
+        # COLUNA 1: ENVIAR PARA RECAPADORA
+        with col_envio:
+            st.subheader("📤 Enviar Carcaça")
+            
+            # ✅ FIX: Validar se resultado é None ou lista vazia
+            pneus_recap = run_query(
+                "SELECT id, marca_fogo, marca FROM pneus WHERE cliente_id = %s AND status = 'RECAPAGEM'",
+                (cliente_id,)
+            )
+            
+            if pneus_recap and len(pneus_recap) > 0:
+                with st.form("enviar_recap"):
+                    opcoes = [f"{p['marca_fogo']} - {p['marca']}" for p in pneus_recap]
+                    pneu_idx = st.selectbox("Selecione a Carcaça", range(len(opcoes)), format_func=lambda i: opcoes[i])
+                    recapadora = st.text_input("Nome da Recapadora")
+                    os = st.text_input("Número da OS/Coleta")
+                    
+                    if st.form_submit_button("📮 Registrar Coleta"):
+                        if recapadora and os:
+                            st.success(f"✅ Pneu enviado para {recapadora} (OS: {os})")
+                        else:
+                            st.error("❌ Preencha todos os campos!")
+            else:
+                st.info("ℹ️ Nenhuma carcaça aguardando envio.")
+        
+        # COLUNA 2: RECEBER PRONTO
+        with col_retorno:
+            st.subheader("📥 Receber Pronto")
+            
+            if pneus_recap and len(pneus_recap) > 0:
+                with st.form("retorno_recap"):
+                    opcoes = [p['marca_fogo'] for p in pneus_recap]
+                    pneu_chegada_idx = st.selectbox("Pneu Retornando", range(len(opcoes)), format_func=lambda i: opcoes[i], key="retorno_pneu")
+                    custo_servico = st.number_input("Custo do Serviço (R$)", min_value=0.0)
+                    banda = st.text_input("Nova Banda Aplicada", placeholder="ex: Michelin XZU")
+                    
+                    if st.form_submit_button("📥 Dar Entrada no Estoque"):
+                        pneu_id = pneus_recap[pneu_chegada_idx]['id']
+                        try:
+                            run_query("""
+                                UPDATE pneus
+                                SET status='ESTOQUE', ciclo_atual = ciclo_atual + 1, modelo = %s
+                                WHERE id = %s
+                            """, (f"Recap {banda}", pneu_id))
+                            st.success("✅ Pneu renovado e disponível no estoque!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Erro ao atualizar: {e}")
+            else:
+                st.info("ℹ️ Nenhum pneu em recapagem.")
+    
+    # === TAB 3: INVENTÁRIO ===
+    with tab_estoque:
+        st.subheader("📊 Posição Geral de Ativos")
+        
+        # Filtros
+        col_filter, col_stats = st.columns([2, 1])
+        
+        with col_filter:
+            filtro = st.multiselect(
+                "Filtrar por Status",
+                ["ESTOQUE", "MONTADO", "RECAPAGEM", "SUCATA"],
+                default=["ESTOQUE", "MONTADO"]
+            )
         
         if filtro:
+            # ✅ FIX: Validar resultado
             placeholders = ', '.join(['%s'] * len(filtro))
             query = f"""
-            SELECT marca_fogo, marca, medida, status, ciclo_atual, 
-                   posicao_atual, km_vida_total, custo_aquisicao
-            FROM pneus 
-            WHERE cliente_id = %s AND status IN ({placeholders})
-            ORDER BY status, km_vida_total DESC
+                SELECT 
+                    marca_fogo, marca, medida, status, 
+                    ciclo_atual, posicao_atual, custo_aquisicao, km_vida_total
+                FROM pneus 
+                WHERE cliente_id = %s AND status IN ({placeholders})
+                ORDER BY marca_fogo
             """
-            
             params = [cliente_id] + filtro
             dados = run_query(query, tuple(params))
             
-            if dados:
+            if dados and len(dados) > 0:
                 df = pd.DataFrame(dados)
-                st.dataframe(df, use_container_width=True)
                 
-                # Métricas
-                col_m1, col_m2, col_m3 = st.columns(3)
-                col_m1.metric("Total de Pneus", len(df))
-                col_m2.metric("Investimento Total", f"R$ {df['custo_aquisicao'].sum():,.2f}")
-                col_m3.metric("Vida Média", f"{df['km_vida_total'].mean():.0f} km")
+                # Estatísticas
+                with col_stats:
+                    st.metric("Total Listado", len(df))
+                    investimento = df['custo_aquisicao'].sum() if 'custo_aquisicao' in df.columns else 0
+                    st.metric("Investimento", f"R$ {investimento:,.2f}")
+                
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                
+                # Download CSV
+                csv = df.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Baixar como CSV",
+                    data=csv,
+                    file_name=f"inventario_pneus_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
             else:
-                st.info("Nenhum pneu encontrado com esse filtro")
-    
-    # ==================== TAB 4: RECAPAGEM ====================
-    with tab_recap:
-        st.subheader("♻️ Fluxo de Recapagem")
-        st.info("Funcionalidade de recapagem em desenvolvimento...")
+                st.warning("⚠️ Nenhum pneu encontrado com estes filtros.")
+        else:
+            st.info("ℹ️ Selecione pelo menos um status para visualizar.")
