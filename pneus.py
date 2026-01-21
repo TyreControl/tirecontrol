@@ -1,19 +1,19 @@
 """
-FLUXO 1 & 2 - pneus_v2.py
+FLUXO 1 & 2 - pneus.py
 Implementa: Cadastro de Lote + Atribuição de Pneus
 """
 
 import streamlit as st
 import pandas as pd
 from datetime import date
-from database_v2 import (
+from database import (
     criar_lote_pneus, adicionar_pneus_ao_lote, obter_lotes_cliente,
     obter_pneus_lote, atribuir_pneu_posicao, remover_pneu_posicao,
     obter_pneus_estoque_disponiveis, obter_pneus_caminhao_por_posicao,
     run_query
 )
 
-def render_pneus_v2():
+def render_pneus():
     """Nova versão com FLUXOS 1 e 2 implementados"""
     
     st.title("🏭 Gestão de Ativos e Estoque")

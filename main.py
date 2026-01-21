@@ -1,5 +1,5 @@
 """
-main_v2.py
+main.py
 Versão atualizada com FLUXOS 1, 2, 4 e 5 implementados
 """
 
@@ -7,14 +7,14 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import login
 import frota
-import pneus_v2  # ← NOVO (era pneus antes)
+import pneus  
 import movimentacoes
 import analise_cpk
 import sistema_alertas
 import relatorios
 import cadastro_cliente
-import fluxo_rodizio_v2  # ← NOVO (era fluxo_rodizio antes)
-from database_v2 import get_todos_clientes, get_detalhes_cliente  # ← ATUALIZADO
+import fluxo_rodizio 
+from database import get_todos_clientes, get_detalhes_cliente 
 
 st.set_page_config(
     page_title="Tyre Control - Gestão Profissional",
@@ -38,7 +38,7 @@ if not st.session_state.get('logged_in'):
 # ==================== SIDEBAR & SELETOR DE CLIENTE ====================
 
 with st.sidebar:
-    st.title("🚚 Tyre Control V2")
+    st.title("🚚 Tyre Control")
     st.caption("Gestão Real de Frota - 5 Fluxos Implementados ✅")
     
     # --- LÓGICA DE ADMIN / MULTI-CLIENTE ---
@@ -133,7 +133,7 @@ selected = option_menu(
 # ==================== ROTEADOR DE PÁGINAS ====================
 
 if selected == "🏠 Home":
-    st.title("🏠 Dashboard TyreControl V2")
+    st.title("🏠 Dashboard TyreControl")
     
     st.markdown("""
     ## ✅ Bem-vindo! Sistema 100% Prático para Gestor de Frota
@@ -163,7 +163,7 @@ if selected == "🏠 Home":
     """)
     
     # Mostrar métricas
-    from database_v2 import run_query
+    from database import run_query
     
     cliente_id = st.session_state.get('cliente_id')
     
@@ -223,11 +223,11 @@ elif selected == "🚛 Minha Frota":
 
 elif selected == "🏭 Gestão de Ativos":
     # ← NOVO: Usar a nova versão
-    pneus_v2.render_pneus_v2()
+    pneus.render_pneus()
 
 elif selected == "🔄 Rodízio":
     # ← NOVO: Usar a nova versão
-    fluxo_rodizio_v2.render_rodizio_v2()
+    fluxo_rodizio.render_rodizio()
 
 elif selected == "🔧 Central de Oficina":
     movimentacoes.render_movimentacoes()
