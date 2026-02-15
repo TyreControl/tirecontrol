@@ -45,7 +45,7 @@ export default function RecapagemPage() {
         const init = async () => {
             const profile = await getSessionProfile()
             if (!profile?.clienteId) {
-                router.push('/login')
+                router.replace('/')
                 return
             }
             setUserProfile(profile)
