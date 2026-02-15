@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
     output: 'export',
-    // basePath: '/tirecontrol', // Enable this if deploying to https://username.github.io/tirecontrol
+    basePath: '/tirecontrol',
     images: {
         unoptimized: true,
     },
