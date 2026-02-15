@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# OS artifacts
+desktop.ini
+Thumbs.db
+
+# Streamlit local
+.streamlit/
+
+# Local tooling
+.DS_Store
